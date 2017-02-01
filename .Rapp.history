@@ -1,0 +1,2866 @@
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))
+prediction(swap[[i]],swap_test[[i]])
+prediction=function(x,validation)#
+{#
+	obs = length(validation)#
+	o = vector(mode="list",length=obs)#
+	for(i in 1:obs)#
+	{#
+		o[[i]]=optimal_tree(x[[i]])#
+	}#
+	as.numeric.factor <- function(m) {as.numeric(levels(m))[m]}   #function to convert factor to numeric#
+	#obs = 30#
+	#obs=dim(x)[1] #
+	fit.predsc=numeric(length=obs)   #initialize array to store prediction from ctree#
+	fit.predsr=numeric(length=obs)   #initialize array to store prediction from rpart#
+	actual=numeric(length=obs)		  #initialize array to store original response value from testing set#
+	for (i in 1:obs)#
+	{#
+ 		fit.predsc[i]= as.numeric.factor(predict(o[[i]]$c.tree,newdata=validation[[i]],type="response")) #prediction for ctree#
+ 		fit.predsr[i] = as.numeric.factor(predict(o[[i]]$r.part,newdata=validation[[i]],type="class")) #prediction for rpart#
+    		actual = as.numeric.factor(sapply(validation,"[[",1 ))#
+	}#
+	cbind(fit.predsc,fit.predsr,actual)#
+}
+prediction(swap[[i]],swap_test[[i]])
+prediction(swap[[1]],swap_test[[1]])
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					if(dim(subtrees)[1]>1&(fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						print("c")#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(alpha)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						print("d")#
+    						#print(subtrees)#
+    						max_sub=max(subtrees[,"xerror"])#
+    						index = as.numeric(which(subtrees[,"xerror"]==max_sub))#
+    						alpha = subtrees[index,"CP"]#
+    						#alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					if(dim(subtrees)[1]>1&(fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						print("c")#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(alpha)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(lower_sub*upper_sub))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						print("d")#
+    						#print(subtrees)#
+    						max_sub=max(subtrees[,"xerror"])#
+    						index = as.numeric(which(subtrees[,"xerror"]==max_sub))#
+    						alpha = subtrees[index,"CP"]#
+    						#alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					if(dim(subtrees)[1]>1&(fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						alpha=0#
+  						print("c")#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(alpha)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						alpha=0#
+    						print("d")#
+    						#print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+warnings()
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					if(dim(subtrees)[1]>=1&(fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						alpha=0#
+  						print("c")#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(alpha)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						alpha=0#
+    						print("d")#
+    						#print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+warning()
+warnings()
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						alpha=0#
+  						print("c")#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(alpha)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						alpha=0#
+    						print("d")#
+    						#print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+warnings()
+x=swap[[1]]
+fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)
+x=swap[[1]][[1]]
+fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)
+printcp(fit)
+fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0)
+subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE]
+subtrees
+subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE]
+subtrees
+(fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0)
+target_error
+minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error
+target_error
+subtrees
+x=swap[[1]][[1]]
+set.seed(99)
+x=swap[[1]][[1]]
+fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)
+printcp(fit)
+minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error
+subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE]
+subtrees
+target_error
+(fit$cptable[which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1,"nsplit"]!=0)
+subtrees[1,"xerror"])-1,"nsplit"]
+subtrees[1,"xerror"]
+which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])
+subtrees[1,"xerror"]
+which(fit$cptable[,"xerror"]==subtrees[1,"xerror"])-1
+subtrees[1,1]
+which(fit$cptable[,"xerror"]==subtrees[1,"nsplit"])
+which(fit$cptable[,"nsplit"]==subtrees[1,"xerror"])
+subtrees[subtrees[1,"xerror"],"nsplit"]
+lower_xerror=subtrees[1,"xerror"]
+lower_xerror
+subtrees[1,"nsplit"]
+(fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0)
+which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])
+which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1
+fit$cptable[1,"nsplit"]!=0
+subtrees[1,"CP"]
+which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1
+fit$cptable[upper_index,"CP"]
+upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)
+fit$cptable[upper_index,"CP"]
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						alpha=0#
+  						print("c")#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(alpha)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						alpha=0#
+    						print("d")#
+    						#print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						print("c")#
+  						print(target_error)#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						print("d")#
+    						#print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						print("c")#
+  						print(target_error)#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						print("d")#
+    						print(fit$cptable)#
+    						print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						print("c")#
+  						print(target_error)#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						print("d")#
+    						print(fit$cptable)#
+    						print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						prunedtree = prune(fit,cp=alpha) #
+    						print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						print("c")#
+  						print(target_error)#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						print("d")#
+    						print(fit$cptable)#
+    						print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+}
+prediction(swap[[1]],swap_test[[1]])
+#check working directory#
+getwd()#
+#
+#set working directory#
+setwd("~/Desktop/")#
+#
+#libraries#
+library(rpart)#
+require(party)#
+require(partykit)#
+#
+#import data#
+lymphoma = read.csv("lymphoma_imputed.csv")#
+lymphoma_noid= lymphoma[,3:length(lymphoma)]#
+lymphoma_noid[,"y"]=factor(lymphoma_noid[,"y"])  #convert y to factor#
+#
+#Function to split dataset into training and testing#
+split_train_test=function(x)#
+{#
+	obs=dim(x)[1]     #number of observations#
+	#obs=30#
+	train_list = vector(mode="list",length=obs)  #initialize empty list for training set#
+	test_list = vector(mode="list",length=obs)   #initialize empty list for test set#
+	for (i in 1:obs)#
+	{#
+ 	 	train_list[[i]]=x[-i,]       #train set is all the observations but one#
+ 	    test_list[[i]]=x[i,]		  #test set is one observations from dataset#
+	}#
+    split = list(train=train_list,test=test_list)#
+}   #
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					alpha=0#
+   					print("a")#
+   					alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						print("c")#
+  						print(target_error)#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						print(lower_sub)#
+  						print(upper_sub)#
+  						print(fit$cptable)#
+  						print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						print("d")#
+    						print(fit$cptable)#
+    						print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+} #
+#
+#prediction function#
+prediction=function(x,validation)#
+{#
+	obs = length(validation)#
+	o = vector(mode="list",length=obs)#
+	for(i in 1:obs)#
+	{#
+		o[[i]]=optimal_tree(x[[i]])#
+	}#
+	as.numeric.factor <- function(m) {as.numeric(levels(m))[m]}   #function to convert factor to numeric#
+	#obs = 30#
+	#obs=dim(x)[1] #
+	fit.predsc=numeric(length=obs)   #initialize array to store prediction from ctree#
+	fit.predsr=numeric(length=obs)   #initialize array to store prediction from rpart#
+	actual=numeric(length=obs)		  #initialize array to store original response value from testing set#
+	for (i in 1:obs)#
+	{#
+ 		fit.predsc[i]= as.numeric.factor(predict(o[[i]]$c.tree,newdata=validation[[i]],type="response")) #prediction for ctree#
+ 		fit.predsr[i] = as.numeric.factor(predict(o[[i]]$r.part,newdata=validation[[i]],type="class")) #prediction for rpart#
+    		actual = as.numeric.factor(sapply(validation,"[[",1 ))#
+	}#
+	cbind(fit.predsc,fit.predsr,actual)#
+}#
+#
+CERP = function(x)#
+{#
+	splits  = split_train_test(x)#
+	p = prediction(splits$train,splits$test)#
+	confu_ctree = as.matrix(table(p[,3],p[,1],dnn=c("actual","predicted")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/length(splits$test)#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(p[,3],p[,2],dnn=c("actual","predicted")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(length(splits$test))#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("actual0","actual1")#
+	col_names=c("ctree.pred0","ctree.pred1","r.part.pred0","rpart.pred1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+CERP(lymphoma_noid)
+x=lymphoma_noid
+splits  = split_train_test(x)
+p = prediction(splits$train,splits$test)
+confusion = function(x)#
+{#
+	confu_ctree = as.matrix(table(x[,3],x[,1],dnn=c("actual","predicted")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/length(splits$test)#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,3],x[,2],dnn=c("actual","predicted")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(length(splits$test))#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("actual0","actual1")#
+	col_names=c("ctree.pred0","ctree.pred1","r.part.pred0","rpart.pred1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(p)
+#check working directory#
+getwd()#
+set.seed(11)#
+#set working directory#
+setwd("~/Desktop/")#
+#
+#libraries#
+library(rpart)#
+require(party)#
+require(partykit)#
+install.packages("Formula")#
+#
+#import data#
+lymphoma = read.csv("lymphoma_imputed.csv")#
+lymphoma_noid= lymphoma[,3:length(lymphoma)]#
+lymphoma_noid[,"y"]=factor(lymphoma_noid[,"y"])  #convert y to factor#
+split_train_test=function(x)#
+{#
+  obs=dim(x)[1]     #number of observations#
+  #obs=30#
+  train_list = vector(mode="list",length=obs)  #initialize empty list for training set#
+  test_list = vector(mode="list",length=obs)   #initialize empty list for test set#
+  for (i in 1:obs)#
+  {#
+    train_list[[i]]=x[-i,]       #train set is all the observations but one#
+    test_list[[i]]=x[i,]		  #test set is one observations from dataset#
+  }#
+  split = list(train=train_list,test=test_list)#
+}  #
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					#alpha=0#
+   					#print("a")#
+   						alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					#print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					#alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						#print("c")#
+  						#print(target_error)#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						#print(lower_sub)#
+  						#print(upper_sub)#
+  						#print(fit$cptable)#
+  						#print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						#print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						#print("d")#
+    						#print(fit$cptable)#
+    						#print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						#print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+} #
+#
+#prediction function#
+prediction=function(x,validation)#
+{#
+	obs = length(validation)#
+	o = vector(mode="list",length=obs)#
+	for(i in 1:obs)#
+	{#
+		o[[i]]=optimal_tree(x[[i]])#
+	}#
+	as.numeric.factor <- function(m) {as.numeric(levels(m))[m]}   #function to convert factor to numeric#
+	#obs = 30#
+	#obs=dim(x)[1] #
+	fit.predsc=numeric(length=obs)   #initialize array to store prediction from ctree#
+	fit.predsr=numeric(length=obs)   #initialize array to store prediction from rpart#
+	actual=numeric(length=obs)		  #initialize array to store original response value from testing set#
+	for (i in 1:obs)#
+	{#
+ 		fit.predsc[i]= as.numeric.factor(predict(o[[i]]$c.tree,newdata=validation[[i]],type="response")) #prediction for ctree#
+ 		fit.predsr[i] = as.numeric.factor(predict(o[[i]]$r.part,newdata=validation[[i]],type="class")) #prediction for rpart#
+    		actual = as.numeric.factor(sapply(validation,"[[",1 ))#
+	}#
+	cbind(fit.predsc,fit.predsr,actual)#
+}#
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2])=="0")#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2])=="0")#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}
+#check working directory#
+getwd()#
+#set.seed(11)#
+#set working directory#
+setwd("~/Desktop/")#
+#
+#libraries#
+library(rpart)#
+require(party)#
+require(partykit)#
+install.packages("Formula")#
+#
+#import data#
+lymphoma = read.csv("lymphoma_imputed.csv")#
+lymphoma_noid= lymphoma[,3:length(lymphoma)]#
+lymphoma_noid[,"y"]=factor(lymphoma_noid[,"y"])  #convert y to factor#
+split_train_test=function(x)#
+{#
+  obs=dim(x)[1]     #number of observations#
+  #obs=30#
+  train_list = vector(mode="list",length=obs)  #initialize empty list for training set#
+  test_list = vector(mode="list",length=obs)   #initialize empty list for test set#
+  for (i in 1:obs)#
+  {#
+    train_list[[i]]=x[-i,]       #train set is all the observations but one#
+    test_list[[i]]=x[i,]		  #test set is one observations from dataset#
+  }#
+  split = list(train=train_list,test=test_list)#
+}  #
+#Optimal tree function #
+optimal_tree=function(x)#
+{#
+	mycontrol = rpart.control(minsplit=5, xval = 10)  #
+	#compute_m = function()#
+	compute_model = list(#
+  	c.tree = function(x) ctree(x$y~.,data=x),#
+  	r.part = function(x) {#
+  				fit = rpart(x$y~.,data=x,cp=0,control=mycontrol)#
+  				minimum_xerror = fit$cptable[which.min(fit$cptable[,"xerror"]),"xerror"] #find absolute minimum xerror#
+    				minimum_xerror_sd = fit$cptable[which.min(fit$cptable[,"xerror"]),"xstd"] #find absolute minimum xerror std#
+    				minimum_xerror_split = fit$cptable[which.min(fit$cptable[,"xerror"]),"nsplit"] #find the number split associated with minimum xerror#
+    				target_error= minimum_xerror+minimum_xerror_sd   #calculate the target error#
+   			    #if goes to root node, use absolute minimim xerror as optimal tree#
+   				if (target_error>=fit$cptable[which.min(fit$cptable[,"nsplit"]),"xerror"])#
+    				{ #
+   					#alpha=0#
+   					#print("a")#
+   						alpha = fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"]#
+    					prunedtree = prune(fit,cp=alpha) #
+    				}#
+				else#
+    				{#
+    					#print("b")#
+    					#finding the subset of trees within one standard deviation of target error if it doesn't go to root node#
+    					subtrees=fit$cptable[fit$cptable[,"nsplit"]>0&fit$cptable[,"nsplit"]<=minimum_xerror_split&fit$cptable[,"xerror"]<target_error,,drop=FALSE] 		#
+    					#if there is only one CP value, alpha is optimal at the value#
+    					#if (dim(subtrees)[1]==1)#
+    					#{#
+    					#	alpha = subtrees[1,1]#
+    					#	prunedtree = prune(fit,cp=alpha)#
+    					#	#print("Error")#
+    					#	#print(alpha)#
+    					#	#
+    					#}#
+    					#if the xerror falls within an interval:have more than one subtree and upper doesn't go to zero root, find the geometic mean#
+    					#alpha=0#
+    					#dim(subtrees)[1]>=1&#
+    					if((fit$cptable[which(fit$cptable[,"nsplit"]==subtrees[1,"nsplit"])-1,"nsplit"]!=0))#
+  					{#
+  						#length(which(fit$cptable[,"nsplit"]!=0))>1#
+  						#print("c")#
+  						#print(target_error)#
+  						lower_sub = as.numeric(subtrees[1,1]) #lower #
+  						upper_index = as.numeric(which(fit$cptable[,"CP"]==subtrees[1,"CP"])-1)#
+  						upper_sub = as.numeric(fit$cptable[upper_index,"CP"]) #upper limit#
+  						#print(lower_sub)#
+  						#print(upper_sub)#
+  						#print(fit$cptable)#
+  						#print(subtrees)#
+    						alpha = as.numeric(sqrt(as.numeric(lower_sub)*as.numeric(upper_sub)))#
+    						#print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    					}#
+    					else#
+    					{#
+    						#print("d")#
+    						#print(fit$cptable)#
+    						#print(subtrees)#
+    						alpha = subtrees[1,"CP"]#
+    						#print(alpha)#
+    						prunedtree = prune(fit,cp=alpha) #
+    						#print(alpha)#
+    						#print(prunedtree)#
+    					}#
+    				}#
+#
+  			}#
+		)#
+	lapply(compute_model,function(f) f(x))  #compute both ctree and rpart simultaneously#
+} #
+#
+#prediction function#
+prediction=function(x,validation)#
+{#
+	obs = length(validation)#
+	o = vector(mode="list",length=obs)#
+	for(i in 1:obs)#
+	{#
+		o[[i]]=optimal_tree(x[[i]])#
+	}#
+	as.numeric.factor <- function(m) {as.numeric(levels(m))[m]}   #function to convert factor to numeric#
+	#obs = 30#
+	#obs=dim(x)[1] #
+	fit.predsc=numeric(length=obs)   #initialize array to store prediction from ctree#
+	fit.predsr=numeric(length=obs)   #initialize array to store prediction from rpart#
+	actual=numeric(length=obs)		  #initialize array to store original response value from testing set#
+	for (i in 1:obs)#
+	{#
+ 		fit.predsc[i]= as.numeric.factor(predict(o[[i]]$c.tree,newdata=validation[[i]],type="response")) #prediction for ctree#
+ 		fit.predsr[i] = as.numeric.factor(predict(o[[i]]$r.part,newdata=validation[[i]],type="class")) #prediction for rpart#
+    		actual = as.numeric.factor(sapply(validation,"[[",1 ))#
+	}#
+	cbind(fit.predsc,fit.predsr,actual)#
+}#
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))
+q
+part_tab_ctree;part_tab_rpart
+actual
+true
+cbind(part_tab_ctree,part_tab_rpart,true)
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)
+x=all_table
+confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))
+confu_ctree
+confu_ctree[1]
+confu_ctree[2]
+confu_ctree[3]
+confu_ctree[4]
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("actual0","actual1")#
+	col_names=c("ctree.pred0","ctree.pred1","r.part.pred0","rpart.pred1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))#
+#confu = as.matrix(table(true,news,dnn=c("actual","predicted")))#
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)#
+#
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+set.seed(40)
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))#
+#confu = as.matrix(table(true,news,dnn=c("actual","predicted")))#
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)#
+#
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+set.seed(41)
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))#
+#confu = as.matrix(table(true,news,dnn=c("actual","predicted")))#
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)#
+#
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+all_table
+x=all_table
+confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))
+acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])
+confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])
+sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)
+b = cbind(confu_ctree,confu_rpart)
+b
+confu_ctree
+confu_rpart
+cbind(confu_ctree,confu_rpart)
+dim(confu_rpart)
+dim(confu_ctree)
+confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))
+confu_ctree
+x=all_table
+x
+set.seed(42)
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))#
+#confu = as.matrix(table(true,news,dnn=c("actual","predicted")))#
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)#
+#
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+set.seed(45)
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))#
+#confu = as.matrix(table(true,news,dnn=c("actual","predicted")))#
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)#
+#
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+set.seed(47)
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))#
+#confu = as.matrix(table(true,news,dnn=c("actual","predicted")))#
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)#
+#
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+set.seed(49)
+#shuffle columns#
+#
+#shuffle = lapply(lymphoma_noid,function(x) x[,c(1,sample(2:4027))])#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+obs = 109#
+group_size=36  #number of element in group#
+n_partition=109   #number of partition#
+counter=1	 #counter to keep track of group#
+sample_size=4027   #sample size#
+a = vector(mode="list",length=obs)  #empty list to hold partitions#
+b = vector(mode="list",length=obs)#
+a_test = vector(mode="list",length=)#
+new_a = vector(mode="list",length=obs)#
+#y=vector(mode="list",length=obs)#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  #y[[i]]=lapply(splits$train,function(elt) elt[,1])#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  #b[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #
+  #b = lapply(splits$test,function(elt) elt[,37:73])#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  #print(c(start,end,counter,remaining)) #
+}#
+#str(a[[102]][1]) access as list one more bracket as dataframe#
+#print(remaining)#
+#after splitting based on criteria, i'll add one column to each partiton#
+#one more column until no more remaining#
+#m=cbind(a[[i]])#
+#which(colnames(splitting$train[[1]])=="GENE2749X.")  finding index of column with name#
+fill_start = start#
+if(fill_start <=sample_size)#
+{#
+  #new_a = lapply(shuffle,function(elt) elt[,c(fill_start:end)])#
+  counter_list = 1#
+  remainder = (sample_size-1)%%n_partition#
+  while(fill_start<=sample_size)  #fill_start=3026#
+  {#
+  counter_list = counter_list + 1#
+  #remainder = (sample_size-1)%%n_partition#
+  for (j in 1:length(splitting$train))#
+  {#
+    fill_start = start#
+    for(l in 1:remainder)#
+    {  #
+    #a[[l]] = cbind(a[[l]][[counter_list]],shuffle[[counter_list]][fill_start])#
+    a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    fill_start = fill_start + 1#
+    }#
+  }  #
+  }#
+}#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#prediction for list#
+#input as swap[[1]],swap_test[[1]]#
+#prediction(list(a[[1]][[1]]),list(a_test[[1]][[1]]))#
+part_tab_ctree=numeric(47)#
+part_tab_rpart=numeric(47)#
+for (i in 1:47)#
+{#
+	q = prediction(swap[[i]],swap_test[[i]])#
+	if (sum(q[,1]=="1")>sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=1#
+	}#
+	else if (sum(q[,1]=="1")<sum(q[,1]=="0"))#
+	{#
+		part_tab_ctree[i]=0#
+	}#
+	if (sum(q[,2]=="1")>sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=1#
+	}#
+	if (sum(q[,2]=="1")<sum(q[,2]=="0"))#
+	{#
+		part_tab_rpart[i]=0#
+	}#
+		#majority vote for ctree#
+		#sum(q[,1]=="1")#
+		#sum(q[,1]=="0")#
+}#
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]} #
+true = as.numeric.factor(sapply(splitting$test,"[[",1 ))#
+#confu = as.matrix(table(true,news,dnn=c("actual","predicted")))#
+all_table = cbind(part_tab_ctree,part_tab_rpart,true)#
+#
+confusion = function(x)  #input matrix table#
+{#
+	confu_ctree = as.matrix(table(x[,1],x[,3],dnn=c("predicted","actual")))   #confusion matrix for ctree#
+	acc.ctree = (confu_ctree[1]+confu_ctree[4])/(dim(x)[1])#
+	sn.ctree = confu_ctree[4]/(confu_ctree[3]+confu_ctree[4])#
+	sp.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[2])#
+	ppv.ctree = confu_ctree[4]/(confu_ctree[2]+confu_ctree[4])#
+	npv.ctree = confu_ctree[1]/(confu_ctree[1]+confu_ctree[3])#
+#
+	confu_rpart = as.matrix(table(x[,2],x[,3],dnn=c("predicted","actual")))   #confusion matrix for rpart#
+	acc.rpart = (confu_rpart[1]+confu_rpart[4])/(dim(x)[1])#
+	sn.rpart = confu_rpart[4]/(confu_rpart[3]+confu_rpart[4])#
+	sp.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[2])#
+	ppv.rpart = confu_rpart[4]/(confu_rpart[2]+confu_rpart[4])#
+	npv.rpart = confu_rpart[1]/(confu_rpart[1]+confu_rpart[3])#
+	sum_stat = matrix(c(acc.ctree,acc.rpart,sn.ctree,sn.rpart,sp.ctree,sp.rpart,ppv.ctree,ppv.rpart,npv.ctree,npv.rpart),nrow=2,ncol=5)#
+	colnames(sum_stat)=c("accuracy","sensitivity","specificity","ppv","npv")#
+	rownames(sum_stat)=c("ctree","rpart")#
+	b = cbind(confu_ctree,confu_rpart)#
+	row_names=c("predicted0","predicted1")#
+	col_names=c("ctree.actual0","ctree.actual1","r.part.actual0","rpart.actual1")#
+	dimnames(b)=list(row_names,col_names)#
+	print(b)#
+	print(sum_stat)#
+}
+confusion(all_table)
+a = list(lymphoma_noid)
+length(a)
+a = list(lymphoma_noid[[1]])
+length(a)
+a[[1]]
+a[1]
+a
+str(lymphoma_noid)
+class(lymphoma_noid)
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])
+class(shuffle)
+length(shuffle)
+length(shuffle[1])
+length(shuffle[[1]])
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test
+class(splitting$train)
+class(splitting$train[[1]])
+length(splitting$train[[1]])
+dim(splitting$train[[1]])
+source('Split.R')
+partition= function(sample_size,column_size,n_partition)#
+{#
+#shuffle columns#
+shuffle = lapply(list(lymphoma_noid),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+counter=1	 #counter to keep track of group#
+a = vector(mode="list",length=n_partition)  #empty list to hold partitions for training#
+a_test = vector(mode="list",length=n_partition) #empty list to hold partition for test#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  print(c(start,end,counter,remaining)) #
+}#
+fill_start = start#
+remainder = (sample_size-1)%%n_partition#
+while(fill_start<=sample_size)  #fill_start=3026#
+{#
+  	for (j in 1:length(splitting$train))#
+  	{#
+    	fill_start = start#
+    	for(l in 1:remainder)#
+    	{  #
+    		a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    		a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    		fill_start = fill_start + 1#
+    	}#
+  	}  #
+}#
+#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#
+part = list(part_train=swap,part_test=swap_test)#
+#
+}
+partition= function(data,sample_size,column_size,n_partition)#
+{#
+#shuffle columns#
+shuffle = lapply(list(data),function(x) x[,c(1,sample(2:4027))])  #need to make list#
+splitting =split_train_test(shuffle[[1]])  #list 1 splitting$train and splitting$test#
+#
+counter=1	 #counter to keep track of group#
+a = vector(mode="list",length=n_partition)  #empty list to hold partitions for training#
+a_test = vector(mode="list",length=n_partition) #empty list to hold partition for test#
+i=1#
+start=2#
+end=37#
+remaining = sample_size-group_size#
+while(counter<=n_partition)#
+{#
+  a[[i]] = lapply(splitting$train,function(elt) elt[,c(1,start:end)]) #first 36 variables of trainset with response for each list#
+  a_test[[i]] = lapply(splitting$test,function(elt) elt[,c(1,start:end)])  #first 36 variables of test set#
+  remaining=remaining-group_size#
+  start=start+group_size#
+  end=end+group_size#
+  counter= counter+1#
+  i=i+1#
+  print(c(start,end,counter,remaining)) #
+}#
+fill_start = start#
+remainder = (sample_size-1)%%n_partition#
+while(fill_start<=sample_size)  #fill_start=3026#
+{#
+  	for (j in 1:length(splitting$train))#
+  	{#
+    	fill_start = start#
+    	for(l in 1:remainder)#
+    	{  #
+    		a[[l]][[j]]= cbind(a[[l]][[j]],splitting$train[[j]][fill_start])#
+    		a_test[[l]][[j]]= cbind(a_test[[l]][[j]],splitting$test[[j]][fill_start])#
+    		fill_start = fill_start + 1#
+    	}#
+  	}  #
+}#
+#
+#swap#
+i <- 1:length(a)#
+j <- 1:length(a[[1]])#
+swap<-lapply(j, function(j) lapply(i, function(i) a[[i]][[j]]))#
+#
+#swap_test#
+i_test <- 1:length(a_test)#
+j_test <- 1:length(a_test[[1]])#
+swap_test<-lapply(j_test, function(j_test) lapply(i_test, function(i_test) a_test[[i_test]][[j_test]]))#
+#
+part = list(part_train=swap,part_test=swap_test)#
+#
+}
+partition(lymphoma_noid)
+partition(lymphoma_noid,4027,36,109)
+a = partition(lymphoma_noid,4027,36,109)
+a$part_train
+str(a$part_train)
+str(a$part_train[[102]])
+str(a$part_train[[47][[102]])
+str(a$part_train[[47]][[102]])
+str(a$part_train[[47]][[103]])
+length(a$part_train[[1]])
+dim(a$part_train[[1]])
+dim(a$part_train[[1]][[1]])
+dim(a$part_test[[1]][[1]])
+a$part_test[[1]][1]
+lymphoma_noid
+str(lymphoma_noid)
+str(lymphoma_noid[1])
+lymphoma_noid[1]
+orig_test=lymphoma_noid
+as.numeric.factor <- function(m) {as.numeric(levels(m))[m]}
+sapply(splitting$test,"[[",1 )
+sapply(list(orig_test),"[[",1 )
+length(lymphoma_noid)
+dim(lymphoma_noid)
+#check working directory#
+getwd()#
+#set.seed(11)#
+#set working directory#
+setwd("~/Desktop/part2")#
+#set.seed(47)#
+#libraries#
+library(rpart)#
+require(party)#
+require(partykit)#
+install.packages("Formula")#
+#
+#import data#
+lymphoma = read.csv("lymphoma_imputed.csv")#
+lymphoma_noid= lymphoma[,3:length(lymphoma)]#
+lymphoma_noid[,"y"]=factor(lymphoma_noid[,"y"])  #convert y to factor
+#check working directory#
+getwd()#
+#set.seed(11)#
+#set working directory#
+setwd("~/Desktop/part2")#
+#set.seed(47)#
+#libraries#
+library(rpart)#
+require(party)#
+require(partykit)#
+install.packages("Formula")#
+#
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")
+part = partition(lymphoma_noid,4027,36,109)
+#import data#
+lymphoma = read.csv("lymphoma_imputed.csv")#
+lymphoma_noid= lymphoma[,3:length(lymphoma)]#
+lymphoma_noid[,"y"]=factor(lymphoma_noid[,"y"])  #convert y to factor
+part = partition(lymphoma_noid,4027,36,109)
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")
+#import data#
+lymphoma = read.csv("lymphoma_imputed.csv")#
+lymphoma_noid= lymphoma[,3:length(lymphoma)]#
+lymphoma_noid[,"y"]=factor(lymphoma_noid[,"y"])  #convert y to factor#
+#
+part = partition(lymphoma_noid,4027,36,109)
+str(part)
+str(part$train[[1]][[1]])
+str(part$part_train[[1]][[1]])
+str(part$part_train[[1]][[102]])
+str(part$part_train[[1]][[103]])
+confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+confusion_part(lymphoma_noid,part$part_train,part$part_test)
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+part = partition(lymphoma_noid,4027,36,109)
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+set.seed(47)
+part = partition(lymphoma_noid,4027,36,109)
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+str(part$part_train)
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+str(part$part_train[[1]])
+str(part$part_train[[1]][[1]])
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+a = Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+a
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+set.seed(89)
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+set.seed(90)
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
+#check working directory#
+getwd()#
+#
+set.seed(90)#
+#
+#set working directory#
+setwd("~/Desktop/Midterm/part2")
+#check working directory#
+getwd()#
+#
+set.seed(90)#
+#
+#set working directory#
+setwd("~/Desktop/Midterm/part2")#
+#
+#libraries#
+library(rpart)#
+require(party)#
+require(partykit)#
+install.packages("Formula")#
+#
+#source functions#
+source("Split.R")#
+source("optimal.R")#
+source("Partition.R")#
+source("Prediction.R")#
+source("Confusion.R")#
+source("Confusion_part.R")#
+#import data#
+lymphoma = read.csv("lymphoma_imputed.csv")#
+lymphoma_noid= lymphoma[,3:length(lymphoma)]#
+lymphoma_noid[,"y"]=factor(lymphoma_noid[,"y"])  #convert y to factor#
+#
+part = partition(lymphoma_noid,4027,36,109)#
+Confusion_part(lymphoma_noid,part$part_train,part$part_test)
